@@ -1,5 +1,4 @@
 export class Teleport extends Entity {
-
   constructor(model: GLTFShape) {
     super()
     engine.addEntity(this)

@@ -8,9 +8,10 @@ base.addComponent(new GLTFShape("models/baseLight.glb"))
 base.addComponent(new Transform({ scale: new Vector3(3, 1, 3) }))
 engine.addEntity(base)
 
+// Teleport effect (not the actual translocator)
 const teleport = new Teleport(new GLTFShape("models/teleport.glb"))
 
-// Disc
+// Translocator and setting
 const X_OFFSET = 0
 const Y_OFFSET = 0.5
 const Z_OFFSET = 1
@@ -75,7 +76,7 @@ wallWest.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), -Math.PI / 2)
 world.addBody(wallWest)
 //#endregion
 
-// Create translocator
+// Create translocator physics
 let translocatorTransform: Transform = translocator.getComponent(Transform)
 
 const translocatorBody: CANNON.Body = new CANNON.Body({
@@ -92,15 +93,16 @@ const translocatorPhysicsContactMaterial = new CANNON.ContactMaterial(groundMate
 world.addContactMaterial(translocatorPhysicsContactMaterial)
 
 translocatorBody.material = translocatorPhysicsMaterial // Add bouncy material to translocator body
-translocatorBody.linearDamping = 0.4 // Round will keep translating even with friction so you need linearDamping
+translocatorBody.linearDamping = 0.4 // Round bodies will keep translating even with friction so you need linearDamping
 translocatorBody.angularDamping = 0.4 // Round bodies will keep rotating even with friction so you need angularDamping
 
 world.addBody(translocatorBody) // Add body to the world
 
-// Useful vectors
-const shootVelocity = 100
-const fixedTimeStep: number = 1.0 / 60.0 // seconds
-const maxSubSteps: number = 3
+// Config
+const SHOOT_VELOCITY = 100
+const FIXED_TIME_STEPS = 1.0 / 60.0 // seconds
+const MAX_TIME_STEPS = 3
+const RECALL_SPEED = 10
 
 // Intermediate variables
 const player = Camera.instance
@@ -109,24 +111,20 @@ const transform = translocator.getComponent(Transform)
 class shootDiscSystem implements ISystem {
   update(dt: number): void {
     if (translocator.isFired) {
-      world.step(fixedTimeStep, dt, maxSubSteps)
+      world.step(FIXED_TIME_STEPS, dt, MAX_TIME_STEPS)
       transform.position.copyFrom(translocatorBody.position)
-      // Check if the velocity is almost 0
-      if (translocatorBody.velocity.almostEquals(new CANNON.Vec3(0, 0, 0), 1)) {
-        log("stop!")
-      }
     } else {
       engine.removeSystem(this)
     }
   }
 }
 
-// Recall disc
+// Recall translocator disc
 class recallDiscSystem implements ISystem {
   update(dt: number): void {
     if (!translocator.isFired) {
       let playerForwardVector = transform.position.subtract(new Vector3(player.position.x, player.position.y - Y_OFFSET, player.position.z))
-      let increment = playerForwardVector.scale(-dt * 10)
+      let increment = playerForwardVector.scale(-dt * RECALL_SPEED)
       transform.translate(increment)
       let distance = Vector3.DistanceSquared(transform.position, player.position) // Check distance squared as it's more optimized
       // Note: Distance is squared so a value of 2 is when the translocator is ~1.4m away
@@ -141,27 +139,28 @@ class recallDiscSystem implements ISystem {
 // Controls
 const input = Input.instance
 
+// Shoot / recall translocator disc
 input.subscribe("BUTTON_DOWN", ActionButton.POINTER, false, (e) => {
   if (!translocator.isFired) {
     engine.addSystem(new shootDiscSystem())
     shootSound.getComponent(AudioSource).playOnce()
     translocator.setGlow(true)
     translocator.setParent(null)
-    // Reset translocator
+
     let shootDirection = Vector3.Forward().rotate(Camera.instance.rotation) // Camera's forward vector
     translocatorBody.position.set(
       Camera.instance.feetPosition.x + shootDirection.x,
       shootDirection.y + Camera.instance.position.y,
       Camera.instance.feetPosition.z + shootDirection.z
     )
-    translocatorBody.velocity.setZero()
-    translocatorBody.angularVelocity.setZero()
 
+    // Shoot
     translocatorBody.applyImpulse(
-      new CANNON.Vec3(shootDirection.x * shootVelocity, shootDirection.y * shootVelocity, shootDirection.z * shootVelocity),
+      new CANNON.Vec3(shootDirection.x * SHOOT_VELOCITY, shootDirection.y * SHOOT_VELOCITY, shootDirection.z * SHOOT_VELOCITY),
       new CANNON.Vec3(translocatorBody.position.x, translocatorBody.position.y, translocatorBody.position.z)
     )
   } else {
+    // Recall
     engine.addSystem(new recallDiscSystem())
     recallSound.getComponent(AudioSource).playOnce()
     translocator.setGlow(false)
@@ -180,6 +179,8 @@ input.subscribe("BUTTON_DOWN", ActionButton.PRIMARY, false, (e) => {
 })
 
 function resetDisc(): void {
+  translocatorBody.velocity.setZero()
+  translocatorBody.angularVelocity.setZero()
   translocator.setParent(Attachable.FIRST_PERSON_CAMERA)
   translocator.getComponent(Transform).position.set(X_OFFSET, Y_OFFSET, Z_OFFSET)
 }
