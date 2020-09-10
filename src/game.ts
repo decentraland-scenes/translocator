@@ -77,7 +77,7 @@ world.addBody(wallWest)
 //#endregion
 
 // Create translocator physics
-let translocatorTransform: Transform = translocator.getComponent(Transform)
+let translocatorTransform = translocator.getComponent(Transform)
 
 const translocatorBody: CANNON.Body = new CANNON.Body({
   mass: 3, // kg
